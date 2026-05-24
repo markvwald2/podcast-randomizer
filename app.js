@@ -3,20 +3,22 @@ const PODCASTS = {
     id: "278981407",
     name: "Stuff You Should Know",
     showUrl: "https://podcasts.apple.com/us/podcast/stuff-you-should-know/id278981407",
-    feedUrl: "",
+    feedUrl: "https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/a91018a4-ea4f-4130-bf55-ae270180c327/44710ecc-10bb-48d1-93c7-ae270180c33e/podcast.rss",
+    artwork: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/aa/82/91/aa82912f-23ee-6f6a-583c-a4e993164d0e/mza_12111158076643383507.jpg/600x600bb.jpg",
   },
   "394775318": {
     id: "394775318",
     name: "99% Invisible",
     showUrl: "https://podcasts.apple.com/us/podcast/99-invisible/id394775318",
-    feedUrl: "",
+    feedUrl: "https://feeds.simplecast.com/BqbsxVfO",
+    artwork: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/79/d0/35/79d035ea-9043-b43e-7380-33cd47bd968b/mza_2606971010425550919.jpg/600x600bb.jpg",
   },
 };
 
 const state = {
   episodes: [],
   current: null,
-  source: "Apple Podcasts recent episodes",
+  source: "Apple Podcasts search fallback",
 };
 
 const statusEl = document.querySelector("#status");
@@ -29,6 +31,8 @@ const summaryEl = document.querySelector("#summary");
 const artworkEl = document.querySelector("#artwork");
 const openLinkEl = document.querySelector("#open-link");
 const rerollButton = document.querySelector("#reroll");
+const settingsToggle = document.querySelector("#settings-toggle");
+const settingsPanel = document.querySelector("#settings-panel");
 
 const podcastInputs = [...document.querySelectorAll("input[name='podcast']")];
 const ageInputs = [...document.querySelectorAll("input[name='age']")];
@@ -50,31 +54,33 @@ async function init() {
 
 function wireControls() {
   rerollButton.addEventListener("click", chooseEpisode);
+  settingsToggle.addEventListener("click", toggleSettings);
 
   for (const input of [...podcastInputs, ...ageInputs]) {
     input.addEventListener("change", chooseEpisode);
   }
 }
 
+function toggleSettings() {
+  const isOpen = settingsToggle.getAttribute("aria-expanded") === "true";
+  settingsToggle.setAttribute("aria-expanded", String(!isOpen));
+  settingsPanel.hidden = isOpen;
+}
+
 async function loadEpisodes() {
   const allEpisodes = await Promise.all(
     Object.values(PODCASTS).map(async (podcast) => {
-      const metadata = await loadPodcastMetadata(podcast);
-      const enrichedPodcast = { ...podcast, ...metadata };
+      try {
+        const rssEpisodes = await loadRssEpisodes(podcast);
 
-      if (enrichedPodcast.feedUrl) {
-        try {
-          const rssEpisodes = await loadRssEpisodes(enrichedPodcast);
-
-          if (rssEpisodes.length) {
-            return rssEpisodes;
-          }
-        } catch (error) {
-          console.warn(`RSS failed for ${podcast.name}; using Apple lookup.`, error);
+        if (rssEpisodes.length) {
+          return rssEpisodes;
         }
+      } catch (error) {
+        console.warn(`RSS failed for ${podcast.name}; using Apple search fallback.`, error);
       }
 
-      return loadAppleEpisodes(enrichedPodcast);
+      return loadAppleEpisodes(podcast);
     }),
   );
 
@@ -85,35 +91,15 @@ async function loadEpisodes() {
 
   state.source = episodes.some((episode) => episode.source === "RSS")
     ? "full RSS archive"
-    : "Apple Podcasts recent episodes";
+    : "Apple Podcasts search fallback";
 
   return episodes;
 }
 
-async function loadPodcastMetadata(podcast) {
-  const url = new URL("https://itunes.apple.com/lookup");
-  url.searchParams.set("id", podcast.id);
-  url.searchParams.set("country", "US");
-
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(`Apple Podcasts lookup failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const result = data.results?.[0] || {};
-
-  return {
-    feedUrl: result.feedUrl || podcast.feedUrl,
-    artwork: result.artworkUrl600 || result.artworkUrl100 || "",
-    name: result.collectionName || podcast.name,
-  };
-}
-
 async function loadAppleEpisodes(podcast) {
-  const url = new URL("https://itunes.apple.com/lookup");
-  url.searchParams.set("id", podcast.id);
+  const url = new URL("https://itunes.apple.com/search");
+  url.searchParams.set("term", podcast.name);
+  url.searchParams.set("media", "podcast");
   url.searchParams.set("entity", "podcastEpisode");
   url.searchParams.set("limit", "200");
   url.searchParams.set("country", "US");
@@ -121,13 +107,13 @@ async function loadAppleEpisodes(podcast) {
   const response = await fetch(url);
 
   if (!response.ok) {
-    throw new Error(`Apple Podcasts request failed: ${response.status}`);
+    throw new Error(`Apple Podcasts search failed: ${response.status}`);
   }
 
   const data = await response.json();
 
   return data.results
-    .filter((item) => item.wrapperType === "podcastEpisode")
+    .filter((item) => String(item.collectionId) === podcast.id)
     .map((item) => normalizeAppleEpisode(item, podcast));
 }
 

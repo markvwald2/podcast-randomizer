@@ -6,17 +6,21 @@
     <meta name="theme-color" content="#f7f3ea">
     <title>Podcast Randomizer</title>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=3">
   </head>
   <body>
     <main class="app-shell">
       <section class="hero" aria-labelledby="app-title">
-        <p class="eyebrow">Sleep queue</p>
-        <h1 id="app-title">Podcast Randomizer</h1>
-        <p class="intro">Roll a random episode, then open it in Apple Podcasts for sleep timer and playback controls.</p>
+        <div>
+          <p class="eyebrow">Sleep queue</p>
+          <h1 id="app-title">Podcast Randomizer</h1>
+        </div>
+        <button id="settings-toggle" class="settings-button" type="button" aria-expanded="false" aria-controls="settings-panel">
+          Settings
+        </button>
       </section>
 
-      <section class="controls" aria-label="Podcast choices">
+      <section id="settings-panel" class="controls" aria-label="Podcast choices" hidden>
         <fieldset>
           <legend>Podcasts</legend>
           <label class="check-row">
@@ -85,6 +89,6 @@
       </section>
     </main>
 
-    <script src="app.js" type="module"></script>
+    <script src="app.js?v=3" type="module"></script>
   </body>
 </html>
