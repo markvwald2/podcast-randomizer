@@ -41,6 +41,7 @@ const appleUrlCache = new Map();
 init();
 
 async function init() {
+  wireOrientationFallback();
   wireControls();
 
   try {
@@ -50,6 +51,21 @@ async function init() {
     console.error(error);
     showStatus("Could not load episodes. Check your connection and try again.");
   }
+}
+
+function wireOrientationFallback() {
+  syncOrientationFallback();
+  window.addEventListener("orientationchange", syncOrientationFallback);
+  window.addEventListener("resize", syncOrientationFallback);
+}
+
+function syncOrientationFallback() {
+  const angle = typeof window.orientation === "number"
+    ? window.orientation
+    : screen.orientation?.angle || 0;
+  const rotation = angle === -90 || angle === 270 ? "90deg" : "-90deg";
+
+  document.documentElement.style.setProperty("--landscape-portrait-rotation", rotation);
 }
 
 function wireControls() {

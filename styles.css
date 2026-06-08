@@ -1,5 +1,6 @@
 :root {
   color-scheme: light;
+  --landscape-portrait-rotation: -90deg;
   --bg: #f7f3ea;
   --ink: #1d2528;
   --muted: #64706d;
@@ -276,6 +277,38 @@ dd {
 
 @media (max-width: 390px) {
   .actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (pointer: coarse) {
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    min-height: 100vh;
+    background-attachment: scroll;
+  }
+
+  .app-shell {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 100svh;
+    height: 100svw;
+    min-height: 100svw;
+    margin: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    transform: translate(-50%, -50%) rotate(var(--landscape-portrait-rotation));
+    transform-origin: center;
+  }
+
+  .controls {
     grid-template-columns: 1fr;
   }
 }

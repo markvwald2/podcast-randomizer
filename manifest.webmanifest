@@ -3,7 +3,7 @@
   "short_name": "Pod Roll",
   "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "portrait-primary",
   "background_color": "#f7f3ea",
   "theme_color": "#f7f3ea",
   "icons": [
