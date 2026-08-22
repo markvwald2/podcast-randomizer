@@ -13,12 +13,42 @@ const PODCASTS = {
     feedUrl: "https://feeds.simplecast.com/BqbsxVfO",
     artwork: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/79/d0/35/79d035ea-9043-b43e-7380-33cd47bd968b/mza_2606971010425550919.jpg/600x600bb.jpg",
   },
+  "1278815517": {
+    id: "1278815517",
+    name: "Ologies with Alie Ward",
+    showUrl: "https://podcasts.apple.com/us/podcast/ologies-with-alie-ward/id1278815517",
+    feedUrl: "https://feeds.simplecast.com/FO6kxYGj",
+    artwork: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts125/v4/44/4e/42/444e42f6-1ce8-1e7b-2d50-4ed506c27004/mza_18370866018545460916.jpg/600x600bb.jpg",
+  },
+  "1380008439": {
+    id: "1380008439",
+    name: "You're Wrong About",
+    showUrl: "https://podcasts.apple.com/us/podcast/youre-wrong-about/id1380008439",
+    feedUrl: "https://feeds.megaphone.fm/AIL6181579533",
+    artwork: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/f1/d5/24/f1d52411-22be-29c9-f5be-492ac9c2c67f/mza_9404779933680119634.jpeg/600x600bb.jpg",
+  },
+};
+
+const MINIMUM_EPISODE_DURATION_MS = 30 * 60 * 1000;
+const AUDIO_DB_NAME = "pod-roll-audio";
+const AUDIO_DB_VERSION = 1;
+const AUDIO_STORE_NAME = "tracks";
+
+const LOCAL_AUDIO_TRACKS = {
+  anxietyUndo: {
+    title: "Anxiety Undo",
+  },
+  morningReset: {
+    title: "The Morning Reset",
+  },
 };
 
 const state = {
   episodes: [],
   current: null,
   source: "Apple Podcasts search fallback",
+  localAudio: new Map(),
+  localAudioUrls: new Map(),
 };
 
 const statusEl = document.querySelector("#status");
@@ -33,9 +63,13 @@ const openLinkEl = document.querySelector("#open-link");
 const rerollButton = document.querySelector("#reroll");
 const settingsToggle = document.querySelector("#settings-toggle");
 const settingsPanel = document.querySelector("#settings-panel");
+const localAudioPlayer = document.querySelector("#local-audio-player");
+const localAudioStatus = document.querySelector("#local-audio-status");
 
 const podcastInputs = [...document.querySelectorAll("input[name='podcast']")];
 const ageInputs = [...document.querySelectorAll("input[name='age']")];
+const audioButtons = [...document.querySelectorAll(".audio-button")];
+const fileInputs = [...document.querySelectorAll("input[data-file-key]")];
 const appleUrlCache = new Map();
 
 init();
@@ -43,6 +77,7 @@ init();
 async function init() {
   wireOrientationFallback();
   wireControls();
+  await loadStoredLocalAudio();
 
   try {
     state.episodes = await loadEpisodes();
@@ -75,6 +110,147 @@ function wireControls() {
   for (const input of [...podcastInputs, ...ageInputs]) {
     input.addEventListener("change", chooseEpisode);
   }
+
+  for (const button of audioButtons) {
+    button.addEventListener("click", () => handleLocalAudioButton(button.dataset.audioKey));
+  }
+
+  for (const input of fileInputs) {
+    input.addEventListener("change", () => importLocalAudio(input));
+  }
+}
+
+function handleLocalAudioButton(audioKey) {
+  if (state.localAudio.has(audioKey)) {
+    playLocalAudio(audioKey);
+    return;
+  }
+
+  promptLocalAudioImport(audioKey);
+}
+
+function promptLocalAudioImport(audioKey) {
+  const track = LOCAL_AUDIO_TRACKS[audioKey];
+  const input = fileInputs.find((fileInput) => fileInput.dataset.fileKey === audioKey);
+
+  if (!track || !input) {
+    return;
+  }
+
+  showLocalAudioStatus(`Choose the MP3 for ${track.title}.`);
+  input.click();
+}
+
+async function playLocalAudio(audioKey) {
+  const track = LOCAL_AUDIO_TRACKS[audioKey];
+  const storedTrack = state.localAudio.get(audioKey);
+
+  if (!track || !storedTrack?.blob) {
+    promptLocalAudioImport(audioKey);
+    return;
+  }
+
+  const src = getLocalAudioUrl(audioKey, storedTrack.blob);
+
+  if (localAudioPlayer.src !== src) {
+    localAudioPlayer.src = src;
+  }
+
+  try {
+    await localAudioPlayer.play();
+    showLocalAudioStatus(`Playing ${track.title}.`);
+  } catch (error) {
+    console.error(error);
+    showLocalAudioStatus(`Could not play ${track.title}.`);
+  }
+}
+
+async function importLocalAudio(input) {
+  const audioKey = input.dataset.fileKey;
+  const track = LOCAL_AUDIO_TRACKS[audioKey];
+  const file = input.files?.[0];
+
+  input.value = "";
+
+  if (!track || !file) {
+    return;
+  }
+
+  if (!isMp3File(file)) {
+    showLocalAudioStatus(`${track.title} needs an MP3 file.`);
+    return;
+  }
+
+  try {
+    const record = {
+      key: audioKey,
+      blob: file,
+      name: file.name,
+      size: file.size,
+      type: file.type || "audio/mpeg",
+      importedAt: new Date().toISOString(),
+    };
+
+    await saveLocalAudioRecord(record);
+    replaceLocalAudioRecord(audioKey, record);
+    updateTrackStatus(audioKey, record);
+    showLocalAudioStatus(`${track.title} imported.`);
+    playLocalAudio(audioKey);
+  } catch (error) {
+    console.error(error);
+    showLocalAudioStatus(`Could not import ${track.title}.`);
+  }
+}
+
+async function loadStoredLocalAudio() {
+  try {
+    const records = await getAllLocalAudioRecords();
+
+    for (const record of records) {
+      if (LOCAL_AUDIO_TRACKS[record.key]) {
+        replaceLocalAudioRecord(record.key, record);
+        updateTrackStatus(record.key, record);
+      }
+    }
+  } catch (error) {
+    console.warn("Could not load stored local audio.", error);
+    showLocalAudioStatus("Stored audio could not be loaded.");
+  }
+}
+
+function replaceLocalAudioRecord(audioKey, record) {
+  const oldUrl = state.localAudioUrls.get(audioKey);
+
+  if (oldUrl) {
+    URL.revokeObjectURL(oldUrl);
+    state.localAudioUrls.delete(audioKey);
+  }
+
+  state.localAudio.set(audioKey, record);
+}
+
+function getLocalAudioUrl(audioKey, blob) {
+  if (!state.localAudioUrls.has(audioKey)) {
+    state.localAudioUrls.set(audioKey, URL.createObjectURL(blob));
+  }
+
+  return state.localAudioUrls.get(audioKey);
+}
+
+function updateTrackStatus(audioKey, record) {
+  const status = document.querySelector(`[data-track-status="${audioKey}"]`);
+
+  if (!status) {
+    return;
+  }
+
+  status.textContent = record
+    ? `Imported ${formatFileSize(record.size)}`
+    : "Not imported";
+}
+
+function isMp3File(file) {
+  return file.type === "audio/mpeg" || file.name.toLowerCase().endsWith(".mp3");
 }
 
 function toggleSettings() {
@@ -221,7 +397,9 @@ function getEpisodePool() {
   newestAllowedDate.setDate(newestAllowedDate.getDate() - minimumAgeDays);
 
   return state.episodes.filter((episode) => {
-    return selectedPodcasts.has(episode.podcastId) && episode.releaseDate <= newestAllowedDate;
+    return selectedPodcasts.has(episode.podcastId)
+      && episode.releaseDate <= newestAllowedDate
+      && episode.durationMs >= MINIMUM_EPISODE_DURATION_MS;
   });
 }
 
@@ -235,7 +413,7 @@ function renderEpisode(episode, poolSize) {
   durationEl.textContent = formatDuration(episode.durationMs);
   summaryEl.textContent = episode.summary || "No description available.";
   openLinkEl.href = episode.url;
-  openLinkEl.textContent = episode.source === "RSS" ? "Finding Podcasts link..." : "Open in Podcasts";
+  openLinkEl.textContent = episode.source === "RSS" ? "Finding link..." : "Play";
 
   artworkEl.src = episode.artwork;
   artworkEl.alt = `${episode.podcastName} artwork`;
@@ -244,7 +422,7 @@ function renderEpisode(episode, poolSize) {
 
 async function updateAppleLink(episode) {
   if (episode.source !== "RSS") {
-    openLinkEl.textContent = "Open in Podcasts";
+    openLinkEl.textContent = "Play";
     return;
   }
 
@@ -255,7 +433,7 @@ async function updateAppleLink(episode) {
   }
 
   openLinkEl.href = appleUrl || episode.url;
-  openLinkEl.textContent = appleUrl ? "Open in Podcasts" : "Open episode page";
+  openLinkEl.textContent = appleUrl ? "Play" : "Episode page";
 }
 
 async function resolveAppleEpisodeUrl(episode) {
@@ -328,6 +506,63 @@ function showStatus(message) {
   statusEl.textContent = message;
 }
 
+function showLocalAudioStatus(message) {
+  localAudioStatus.textContent = message;
+}
+
+function openAudioDb() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB is not available"));
+      return;
+    }
+
+    const request = indexedDB.open(AUDIO_DB_NAME, AUDIO_DB_VERSION);
+
+    request.addEventListener("upgradeneeded", () => {
+      const db = request.result;
+
+      if (!db.objectStoreNames.contains(AUDIO_STORE_NAME)) {
+        db.createObjectStore(AUDIO_STORE_NAME, { keyPath: "key" });
+      }
+    });
+
+    request.addEventListener("success", () => resolve(request.result));
+    request.addEventListener("error", () => reject(request.error));
+  });
+}
+
+async function saveLocalAudioRecord(record) {
+  const db = await openAudioDb();
+
+  try {
+    await runAudioStoreRequest(db, "readwrite", (store) => store.put(record));
+  } finally {
+    db.close();
+  }
+}
+
+async function getAllLocalAudioRecords() {
+  const db = await openAudioDb();
+
+  try {
+    return await runAudioStoreRequest(db, "readonly", (store) => store.getAll());
+  } finally {
+    db.close();
+  }
+}
+
+function runAudioStoreRequest(db, mode, callback) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(AUDIO_STORE_NAME, mode);
+    const request = callback(transaction.objectStore(AUDIO_STORE_NAME));
+
+    request.addEventListener("success", () => resolve(request.result));
+    request.addEventListener("error", () => reject(request.error));
+    transaction.addEventListener("error", () => reject(transaction.error));
+  });
+}
+
 function formatDate(date) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -350,6 +585,15 @@ function formatDuration(durationMs) {
   }
 
   return `${hours} hr ${minutes} min`;
+}
+
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes)) {
+    return "";
+  }
+
+  const megabytes = bytes / (1024 * 1024);
+  return `${megabytes.toFixed(megabytes >= 10 ? 0 : 1)} MB`;
 }
 
 function stripHtml(value) {

@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f3ea">
     <title>Podcast Randomizer</title>
-    <link rel="manifest" href="manifest.webmanifest?v=4">
+    <link rel="manifest" href="manifest.webmanifest?v=11">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=11">
   </head>
   <body>
     <main class="app-shell">
@@ -37,6 +37,20 @@
             <input type="checkbox" name="podcast" value="394775318" checked>
             <span>
               <strong>99% Invisible</strong>
+              <small>Apple Podcasts</small>
+            </span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" name="podcast" value="1278815517" checked>
+            <span>
+              <strong>Ologies with Alie Ward</strong>
+              <small>Apple Podcasts</small>
+            </span>
+          </label>
+          <label class="check-row">
+            <input type="checkbox" name="podcast" value="1380008439" checked>
+            <span>
+              <strong>You're Wrong About</strong>
               <small>Apple Podcasts</small>
             </span>
           </label>
@@ -85,13 +99,36 @@
           <p id="summary" class="summary"></p>
 
           <div class="actions">
-            <a id="open-link" class="primary-button" href="#" target="_blank" rel="noopener">Open in Podcasts</a>
+            <a id="open-link" class="primary-button" href="#" target="_blank" rel="noopener">Play</a>
             <button id="reroll" type="button" class="secondary-button">Another</button>
           </div>
         </article>
       </section>
+
+      <section class="local-audio-panel" aria-labelledby="local-audio-title">
+        <div>
+          <p class="eyebrow">Local audio</p>
+          <h2 id="local-audio-title" class="section-title">Quick plays</h2>
+        </div>
+
+        <div class="local-audio-actions">
+          <div class="local-audio-row">
+            <button type="button" class="audio-button" data-audio-key="anxietyUndo">Anxiety Undo</button>
+            <input type="file" accept="audio/mpeg,.mp3" data-file-key="anxietyUndo" hidden>
+            <p class="track-status" data-track-status="anxietyUndo">Not imported</p>
+          </div>
+          <div class="local-audio-row">
+            <button type="button" class="audio-button" data-audio-key="morningReset">The Morning Reset</button>
+            <input type="file" accept="audio/mpeg,.mp3" data-file-key="morningReset" hidden>
+            <p class="track-status" data-track-status="morningReset">Not imported</p>
+          </div>
+        </div>
+
+        <p id="local-audio-status" class="local-audio-status" aria-live="polite"></p>
+        <audio id="local-audio-player" preload="metadata"></audio>
+      </section>
     </main>
 
-    <script src="app.js?v=4" type="module"></script>
+    <script src="app.js?v=11" type="module"></script>
   </body>
 </html>

@@ -88,7 +88,8 @@ h1 {
 }
 
 .controls,
-.episode-panel {
+.episode-panel,
+.local-audio-panel {
   display: grid;
   gap: 14px;
 }
@@ -160,14 +161,16 @@ legend {
 }
 
 .episode {
+  min-width: 0;
   padding: 14px;
+  overflow: hidden;
 }
 
 .show-row {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
   gap: 14px;
-  align-items: center;
+  align-items: start;
 }
 
 .show-row img {
@@ -178,15 +181,25 @@ legend {
   background: #e3dccd;
 }
 
+.show-row > div {
+  min-width: 0;
+}
+
 .collection {
   margin: 0 0 5px;
 }
 
 h2 {
   margin: 0;
-  font-size: 1.4rem;
-  line-height: 1.14;
+  font-size: 2.8rem;
+  line-height: 1.02;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.section-title {
+  font-size: 1.35rem;
+  line-height: 1.1;
 }
 
 .meta {
@@ -228,7 +241,7 @@ dd {
 
 .actions {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
 }
 
@@ -241,8 +254,12 @@ dd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 0;
   text-decoration: none;
+  text-align: center;
+  font-size: 1.35rem;
   font-weight: 850;
+  line-height: 1.05;
 }
 
 .primary-button {
@@ -261,6 +278,65 @@ dd {
   color: #3d3020;
 }
 
+.local-audio-panel {
+  margin-top: 22px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(255 250 240 / 78%);
+  box-shadow: var(--shadow);
+}
+
+.local-audio-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.local-audio-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.audio-button {
+  min-width: 0;
+  min-height: 78px;
+  border: 1px solid #cbbf9f;
+  border-radius: 8px;
+  padding: 0 16px;
+  background: rgb(255 255 255 / 58%);
+  color: #33403f;
+  font-size: 1.45rem;
+  font-weight: 850;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.audio-button:active,
+.audio-button:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.track-status {
+  grid-column: 1 / -1;
+  min-height: 1.2em;
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.local-audio-status {
+  min-height: 1.25em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
 @media (min-width: 680px) {
   .app-shell {
     padding-top: 24px;
@@ -275,8 +351,9 @@ dd {
   }
 }
 
-@media (max-width: 390px) {
-  .actions {
+@media (max-width: 560px) {
+  .actions,
+  .local-audio-actions {
     grid-template-columns: 1fr;
   }
 }

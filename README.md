@@ -28,5 +28,11 @@ Then open `http://localhost:8000`.
 
 - Stuff You Should Know
 - 99% Invisible
+- Ologies with Alie Ward
+- You're Wrong About
 
 The app currently loads full RSS archives directly in the browser for the default shows. It keeps Apple's recent-episode lookup as a fallback if a feed fails.
+
+## Local audio
+
+The quick-play audio buttons store imported MP3 files privately in the browser with IndexedDB. Audio files are not uploaded or committed to the repo. If browser website data is cleared or the app is opened on another device/browser, the files need to be imported again.
