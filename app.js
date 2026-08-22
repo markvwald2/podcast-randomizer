@@ -36,7 +36,7 @@ const AUDIO_STORE_NAME = "tracks";
 const LOCAL_AUDIO_CACHE_NAME = "pod-roll-local-audio-v1";
 const LOCAL_AUDIO_ROUTE_PREFIX = "local-audio";
 const LOCAL_AUDIO_ARTWORK = "assets/media/local-audio-artwork-1024.png";
-const SERVICE_WORKER_VERSION = "21";
+const SERVICE_WORKER_VERSION = "22";
 
 const LOCAL_AUDIO_TRACKS = {
   anxietyUndo: {
@@ -225,6 +225,23 @@ function seekLocalAudioWhenReady(time) {
   });
 }
 
+async function playActiveLocalAudioFromMediaSession() {
+  const audioKey = state.activeLocalAudioKey;
+
+  if (!audioKey) {
+    return;
+  }
+
+  try {
+    await localAudioPlayer.play();
+    updateAudioButtons();
+    updateMediaSessionPlaybackState("playing");
+    updateMediaSessionPosition();
+  } catch (error) {
+    console.warn("Could not resume local audio from Media Session.", error);
+  }
+}
+
 function setLocalAudioCurrentTime(time) {
   const duration = localAudioPlayer.duration;
   const maxTime = Number.isFinite(duration) ? duration : time;
@@ -353,6 +370,8 @@ function setupMediaSession() {
   }
 
   const actions = {
+    play: playActiveLocalAudioFromMediaSession,
+    pause: () => localAudioPlayer.pause(),
     stop: stopLocalAudio,
     seekbackward: (details) => seekLocalAudioBy(-(details.seekOffset || 15)),
     seekforward: (details) => seekLocalAudioBy(details.seekOffset || 15),
