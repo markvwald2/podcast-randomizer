@@ -35,10 +35,25 @@ async function serveLocalAudio(request) {
   const rangeHeader = request.headers.get("Range");
 
   if (!rangeHeader) {
-    return response;
+    return createFullAudioResponse(response);
   }
 
   return createRangeResponse(response, rangeHeader);
+}
+
+async function createFullAudioResponse(response) {
+  const blob = await response.blob();
+  const contentType = response.headers.get("Content-Type") || "audio/mpeg";
+
+  return new Response(blob, {
+    status: 200,
+    headers: {
+      "Accept-Ranges": "bytes",
+      "Content-Length": String(blob.size),
+      "Content-Type": contentType,
+      "Cache-Control": "private, max-age=31536000",
+    },
+  });
 }
 
 async function createRangeResponse(response, rangeHeader) {
@@ -46,7 +61,7 @@ async function createRangeResponse(response, rangeHeader) {
   const match = rangeHeader.match(/^bytes=(\d*)-(\d*)$/);
 
   if (!match) {
-    return response;
+    return createFullAudioResponse(response);
   }
 
   const size = blob.size;

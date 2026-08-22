@@ -36,7 +36,7 @@ const AUDIO_STORE_NAME = "tracks";
 const LOCAL_AUDIO_CACHE_NAME = "pod-roll-local-audio-v1";
 const LOCAL_AUDIO_ROUTE_PREFIX = "local-audio";
 const LOCAL_AUDIO_ARTWORK = "assets/media/local-audio-artwork-1024.png";
-const SERVICE_WORKER_VERSION = "20";
+const SERVICE_WORKER_VERSION = "21";
 
 const LOCAL_AUDIO_TRACKS = {
   anxietyUndo: {
