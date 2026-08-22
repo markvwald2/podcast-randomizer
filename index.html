@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f7f3ea">
     <title>Podcast Randomizer</title>
-    <link rel="manifest" href="manifest.webmanifest?v=22">
+    <link rel="manifest" href="manifest.webmanifest?v=24">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="styles.css?v=22">
+    <link rel="stylesheet" href="styles.css?v=24">
   </head>
   <body>
     <main class="app-shell">
@@ -70,6 +70,18 @@
             <span>Older than 90 days</span>
           </label>
         </fieldset>
+
+        <fieldset class="private-audio-settings">
+          <legend>Private audio</legend>
+          <label class="url-row">
+            <span>Anxiety Undo</span>
+            <input type="url" inputmode="url" autocomplete="off" spellcheck="false" data-hosted-audio-key="anxietyUndo">
+          </label>
+          <label class="url-row">
+            <span>The Morning Reset</span>
+            <input type="url" inputmode="url" autocomplete="off" spellcheck="false" data-hosted-audio-key="morningReset">
+          </label>
+        </fieldset>
       </section>
 
       <section class="episode-panel" aria-live="polite">
@@ -123,11 +135,12 @@
           </div>
         </div>
 
+        <button id="clear-local-audio" type="button" class="clear-audio-button">Clear imported files</button>
         <p id="local-audio-status" class="local-audio-status" aria-live="polite"></p>
         <audio id="local-audio-player" preload="metadata"></audio>
       </section>
     </main>
 
-    <script src="app.js?v=22" type="module"></script>
+    <script src="app.js?v=24" type="module"></script>
   </body>
 </html>

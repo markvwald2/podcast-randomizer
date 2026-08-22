@@ -36,3 +36,5 @@ The app currently loads full RSS archives directly in the browser for the defaul
 ## Local audio
 
 The quick-play audio buttons store imported MP3 files privately in the browser with IndexedDB. Audio files are not uploaded or committed to the repo. If browser website data is cleared or the app is opened on another device/browser, the files need to be imported again.
+
+For more reliable iOS lock-screen playback, each quick-play button can also use a private hosted HTTPS URL. Add those URLs in Settings under Private audio. The URLs are stored only in that browser with localStorage and are not committed to the repo. When a private URL is saved for a track, its quick-play button opens that URL instead of playing the browser-imported MP3. Use Clear imported files to remove browser-stored MP3 copies while keeping private URLs.

@@ -121,7 +121,8 @@ legend {
 }
 
 .check-row,
-.radio-row {
+.radio-row,
+.url-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -130,7 +131,8 @@ legend {
 }
 
 .check-row + .check-row,
-.radio-row + .radio-row {
+.radio-row + .radio-row,
+.url-row + .url-row {
   border-top: 1px solid rgb(216 208 192 / 72%);
 }
 
@@ -151,6 +153,37 @@ legend {
   display: block;
   margin-top: 2px;
   color: var(--muted);
+}
+
+.private-audio-settings {
+  grid-column: 1 / -1;
+}
+
+.url-row {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 0;
+}
+
+.url-row span {
+  color: #33403f;
+  font-weight: 800;
+}
+
+.url-row input {
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid rgb(203 191 159 / 82%);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: rgb(255 255 255 / 66%);
+  color: var(--ink);
+}
+
+.url-row input:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgb(36 107 103 / 18%);
 }
 
 .status {
@@ -324,6 +357,24 @@ dd {
   border-color: var(--accent);
   background: var(--accent);
   color: white;
+}
+
+.clear-audio-button {
+  justify-self: start;
+  min-height: 42px;
+  border: 1px solid #cbbf9f;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: rgb(255 255 255 / 46%);
+  color: #4c4640;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.clear-audio-button:active,
+.clear-audio-button:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
 }
 
 .track-status {

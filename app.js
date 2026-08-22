@@ -36,7 +36,8 @@ const AUDIO_STORE_NAME = "tracks";
 const LOCAL_AUDIO_CACHE_NAME = "pod-roll-local-audio-v1";
 const LOCAL_AUDIO_ROUTE_PREFIX = "local-audio";
 const LOCAL_AUDIO_ARTWORK = "assets/media/local-audio-artwork-1024.png";
-const SERVICE_WORKER_VERSION = "22";
+const HOSTED_AUDIO_STORAGE_KEY = "pod-roll-hosted-audio";
+const SERVICE_WORKER_VERSION = "24";
 
 const LOCAL_AUDIO_TRACKS = {
   anxietyUndo: {
@@ -56,6 +57,7 @@ const state = {
   localAudio: new Map(),
   localAudioUrls: new Map(),
   localAudioCachedKeys: new Set(),
+  hostedAudio: new Map(),
   localAudioRoutesAvailable: false,
   activeLocalAudioKey: "",
 };
@@ -74,11 +76,13 @@ const settingsToggle = document.querySelector("#settings-toggle");
 const settingsPanel = document.querySelector("#settings-panel");
 const localAudioPlayer = document.querySelector("#local-audio-player");
 const localAudioStatus = document.querySelector("#local-audio-status");
+const clearLocalAudioButton = document.querySelector("#clear-local-audio");
 
 const podcastInputs = [...document.querySelectorAll("input[name='podcast']")];
 const ageInputs = [...document.querySelectorAll("input[name='age']")];
 const audioButtons = [...document.querySelectorAll(".audio-button")];
 const fileInputs = [...document.querySelectorAll("input[data-file-key]")];
+const hostedAudioInputs = [...document.querySelectorAll("input[data-hosted-audio-key]")];
 const appleUrlCache = new Map();
 
 init();
@@ -86,6 +90,7 @@ init();
 async function init() {
   wireOrientationFallback();
   wireControls();
+  loadHostedAudioUrls();
   await registerLocalAudioServiceWorker();
   await loadStoredLocalAudio();
 
@@ -116,6 +121,7 @@ function syncOrientationFallback() {
 function wireControls() {
   rerollButton.addEventListener("click", chooseEpisode);
   settingsToggle.addEventListener("click", toggleSettings);
+  clearLocalAudioButton.addEventListener("click", clearImportedLocalAudio);
 
   for (const input of [...podcastInputs, ...ageInputs]) {
     input.addEventListener("change", chooseEpisode);
@@ -127,6 +133,10 @@ function wireControls() {
 
   for (const input of fileInputs) {
     input.addEventListener("change", () => importLocalAudio(input));
+  }
+
+  for (const input of hostedAudioInputs) {
+    input.addEventListener("change", () => saveHostedAudioUrl(input));
   }
 
   localAudioPlayer.addEventListener("play", () => {
@@ -149,12 +159,34 @@ function handleLocalAudioButton(audioKey) {
     return;
   }
 
+  if (state.hostedAudio.has(audioKey)) {
+    openHostedAudio(audioKey);
+    return;
+  }
+
   if (state.localAudio.has(audioKey)) {
     playLocalAudio(audioKey);
     return;
   }
 
   promptLocalAudioImport(audioKey);
+}
+
+function openHostedAudio(audioKey) {
+  const track = LOCAL_AUDIO_TRACKS[audioKey];
+  const url = state.hostedAudio.get(audioKey);
+
+  if (!track || !url) {
+    return;
+  }
+
+  stopLocalAudio();
+  showLocalAudioStatus(`Opening ${track.title}.`);
+  const opened = window.open(url, "_blank", "noopener");
+
+  if (!opened) {
+    window.location.assign(url);
+  }
 }
 
 function promptLocalAudioImport(audioKey) {
@@ -302,6 +334,32 @@ async function importLocalAudio(input) {
   }
 }
 
+async function clearImportedLocalAudio() {
+  try {
+    stopLocalAudio();
+    await deleteAllLocalAudioRecords();
+    await clearLocalAudioCache();
+
+    for (const audioKey of Object.keys(LOCAL_AUDIO_TRACKS)) {
+      const oldUrl = state.localAudioUrls.get(audioKey);
+
+      if (oldUrl) {
+        URL.revokeObjectURL(oldUrl);
+      }
+
+      state.localAudio.delete(audioKey);
+      state.localAudioUrls.delete(audioKey);
+      state.localAudioCachedKeys.delete(audioKey);
+      updateTrackStatus(audioKey, null);
+    }
+
+    showLocalAudioStatus("Imported files cleared. Private URLs were kept.");
+  } catch (error) {
+    console.error(error);
+    showLocalAudioStatus("Could not clear imported files.");
+  }
+}
+
 async function loadStoredLocalAudio() {
   try {
     const records = await getAllLocalAudioRecords();
@@ -349,9 +407,92 @@ function updateTrackStatus(audioKey, record) {
     return;
   }
 
-  status.textContent = record
-    ? `Imported ${formatFileSize(record.size)}`
-    : "Not imported";
+  if (state.hostedAudio.has(audioKey)) {
+    status.textContent = "Private URL saved";
+    return;
+  }
+
+  status.textContent = record ? `Imported ${formatFileSize(record.size)}` : "Not imported";
+}
+
+function loadHostedAudioUrls() {
+  let storedUrls = {};
+
+  try {
+    storedUrls = JSON.parse(localStorage.getItem(HOSTED_AUDIO_STORAGE_KEY) || "{}");
+  } catch (error) {
+    console.warn("Could not read hosted audio settings.", error);
+  }
+
+  for (const input of hostedAudioInputs) {
+    const audioKey = input.dataset.hostedAudioKey;
+    const url = normalizeHostedAudioUrl(storedUrls[audioKey]);
+
+    if (url) {
+      state.hostedAudio.set(audioKey, url);
+      input.value = url;
+    }
+
+    updateTrackStatus(audioKey, state.localAudio.get(audioKey));
+  }
+}
+
+function saveHostedAudioUrl(input) {
+  const audioKey = input.dataset.hostedAudioKey;
+  const track = LOCAL_AUDIO_TRACKS[audioKey];
+  const url = normalizeHostedAudioUrl(input.value);
+
+  if (!track) {
+    return;
+  }
+
+  if (input.value.trim() && !url) {
+    input.value = state.hostedAudio.get(audioKey) || "";
+    showLocalAudioStatus(`${track.title} needs an HTTPS URL.`);
+    return;
+  }
+
+  if (url) {
+    state.hostedAudio.set(audioKey, url);
+    input.value = url;
+  } else {
+    state.hostedAudio.delete(audioKey);
+    input.value = "";
+  }
+
+  persistHostedAudioUrls();
+  updateTrackStatus(audioKey, state.localAudio.get(audioKey));
+  showLocalAudioStatus(url ? `${track.title} URL saved.` : `${track.title} URL cleared.`);
+}
+
+function persistHostedAudioUrls() {
+  const urls = {};
+
+  for (const [audioKey, url] of state.hostedAudio) {
+    urls[audioKey] = url;
+  }
+
+  try {
+    localStorage.setItem(HOSTED_AUDIO_STORAGE_KEY, JSON.stringify(urls));
+  } catch (error) {
+    console.warn("Could not save hosted audio settings.", error);
+    showLocalAudioStatus("Private URL could not be saved.");
+  }
+}
+
+function normalizeHostedAudioUrl(value) {
+  const trimmed = String(value || "").trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
 }
 
 function updateAudioButtons() {
@@ -425,6 +566,19 @@ async function cacheLocalAudioRecord(record) {
     state.localAudioCachedKeys.delete(record.key);
     return false;
   }
+}
+
+async function clearLocalAudioCache() {
+  if (!("caches" in window)) {
+    return;
+  }
+
+  const cache = await caches.open(LOCAL_AUDIO_CACHE_NAME);
+
+  await Promise.all(Object.keys(LOCAL_AUDIO_TRACKS).map((audioKey) => {
+    const url = new URL(getLocalAudioRoute(audioKey), window.location.href);
+    return cache.delete(url.href, { ignoreSearch: true });
+  }));
 }
 
 function getLocalAudioRoute(audioKey) {
@@ -797,6 +951,16 @@ async function getAllLocalAudioRecords() {
 
   try {
     return await runAudioStoreRequest(db, "readonly", (store) => store.getAll());
+  } finally {
+    db.close();
+  }
+}
+
+async function deleteAllLocalAudioRecords() {
+  const db = await openAudioDb();
+
+  try {
+    await runAudioStoreRequest(db, "readwrite", (store) => store.clear());
   } finally {
     db.close();
   }
