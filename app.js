@@ -36,7 +36,7 @@ const AUDIO_STORE_NAME = "tracks";
 const LOCAL_AUDIO_CACHE_NAME = "pod-roll-local-audio-v1";
 const LOCAL_AUDIO_ROUTE_PREFIX = "local-audio";
 const LOCAL_AUDIO_ARTWORK = "assets/media/local-audio-artwork-1024.png";
-const SERVICE_WORKER_VERSION = "22";
+const SERVICE_WORKER_VERSION = "25";
 
 const LOCAL_AUDIO_TRACKS = {
   anxietyUndo: {
@@ -57,6 +57,8 @@ const state = {
   localAudioUrls: new Map(),
   localAudioCachedKeys: new Set(),
   localAudioRoutesAvailable: false,
+  localAudioHold: null,
+  allowLocalAudioPause: false,
   activeLocalAudioKey: "",
 };
 
@@ -134,6 +136,11 @@ function wireControls() {
     updateMediaSessionPlaybackState("playing");
   });
   localAudioPlayer.addEventListener("pause", () => {
+    if (shouldHoldLocalAudioPause()) {
+      resumeHeldLocalAudioAfterSystemPause();
+      return;
+    }
+
     updateAudioButtons();
     updateMediaSessionPlaybackState("paused");
   });
@@ -190,6 +197,7 @@ async function playLocalAudio(audioKey, options = {}) {
       await seekLocalAudioWhenReady(options.startTime);
     }
     await localAudioPlayer.play();
+    clearLocalAudioHold();
     updateAudioButtons();
     updateMediaSessionPosition();
     showLocalAudioStatus(`Playing ${track.title}.`);
@@ -233,13 +241,86 @@ async function playActiveLocalAudioFromMediaSession() {
   }
 
   try {
-    await localAudioPlayer.play();
+    if (state.localAudioHold) {
+      localAudioPlayer.currentTime = state.localAudioHold.time;
+      localAudioPlayer.muted = state.localAudioHold.muted;
+      localAudioPlayer.volume = state.localAudioHold.volume;
+      state.localAudioHold = null;
+    }
+
+    if (localAudioPlayer.paused) {
+      await localAudioPlayer.play();
+    }
+
     updateAudioButtons();
     updateMediaSessionPlaybackState("playing");
     updateMediaSessionPosition();
   } catch (error) {
     console.warn("Could not resume local audio from Media Session.", error);
   }
+}
+
+function holdActiveLocalAudioFromMediaSession() {
+  const audioKey = state.activeLocalAudioKey;
+
+  if (!audioKey || localAudioPlayer.paused) {
+    localAudioPlayer.pause();
+    return;
+  }
+
+  if (state.localAudioHold) {
+    playActiveLocalAudioFromMediaSession();
+    return;
+  }
+
+  state.localAudioHold = {
+    time: localAudioPlayer.currentTime,
+    muted: localAudioPlayer.muted,
+    volume: localAudioPlayer.volume,
+  };
+  localAudioPlayer.muted = true;
+  localAudioPlayer.volume = 0;
+  updateAudioButtons();
+  updateMediaSessionPlaybackState("playing");
+  updateMediaSessionPosition();
+}
+
+function shouldHoldLocalAudioPause() {
+  return Boolean(state.activeLocalAudioKey)
+    && !state.allowLocalAudioPause
+    && !localAudioPlayer.ended;
+}
+
+async function resumeHeldLocalAudioAfterSystemPause() {
+  if (!state.localAudioHold) {
+    state.localAudioHold = {
+      time: localAudioPlayer.currentTime,
+      muted: localAudioPlayer.muted,
+      volume: localAudioPlayer.volume,
+    };
+  }
+
+  localAudioPlayer.muted = true;
+  localAudioPlayer.volume = 0;
+
+  try {
+    await localAudioPlayer.play();
+    updateAudioButtons();
+    updateMediaSessionPlaybackState("playing");
+    updateMediaSessionPosition();
+  } catch (error) {
+    console.warn("Could not hold local audio after system pause.", error);
+  }
+}
+
+function clearLocalAudioHold() {
+  if (!state.localAudioHold) {
+    return;
+  }
+
+  localAudioPlayer.muted = state.localAudioHold.muted;
+  localAudioPlayer.volume = state.localAudioHold.volume;
+  state.localAudioHold = null;
 }
 
 function setLocalAudioCurrentTime(time) {
@@ -249,10 +330,14 @@ function setLocalAudioCurrentTime(time) {
 }
 
 function stopLocalAudio() {
+  clearLocalAudioHold();
+  state.allowLocalAudioPause = true;
+
   if (!localAudioPlayer.paused) {
     localAudioPlayer.pause();
   }
 
+  state.allowLocalAudioPause = false;
   localAudioPlayer.currentTime = 0;
   const track = LOCAL_AUDIO_TRACKS[state.activeLocalAudioKey];
   state.activeLocalAudioKey = "";
@@ -356,7 +441,9 @@ function updateTrackStatus(audioKey, record) {
 
 function updateAudioButtons() {
   for (const button of audioButtons) {
-    const isActive = button.dataset.audioKey === state.activeLocalAudioKey && !localAudioPlayer.paused;
+    const isActive = button.dataset.audioKey === state.activeLocalAudioKey
+      && !localAudioPlayer.paused
+      && !state.localAudioHold;
     const title = LOCAL_AUDIO_TRACKS[button.dataset.audioKey]?.title || button.textContent;
 
     button.textContent = isActive ? `Stop ${title}` : title;
@@ -371,7 +458,7 @@ function setupMediaSession() {
 
   const actions = {
     play: playActiveLocalAudioFromMediaSession,
-    pause: () => localAudioPlayer.pause(),
+    pause: holdActiveLocalAudioFromMediaSession,
     stop: stopLocalAudio,
     seekbackward: (details) => seekLocalAudioBy(-(details.seekOffset || 15)),
     seekforward: (details) => seekLocalAudioBy(details.seekOffset || 15),
@@ -479,7 +566,7 @@ function updateMediaSessionPosition() {
     navigator.mediaSession.setPositionState({
       duration,
       playbackRate: localAudioPlayer.playbackRate,
-      position: localAudioPlayer.currentTime,
+      position: state.localAudioHold?.time ?? localAudioPlayer.currentTime,
     });
   } catch (error) {
     console.warn("Could not update Media Session position.", error);
