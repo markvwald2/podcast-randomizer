@@ -190,24 +190,6 @@ async function playLocalAudio(audioKey) {
   }
 }
 
-async function resumeLocalAudio() {
-  if (!state.activeLocalAudioKey) {
-    return;
-  }
-
-  try {
-    await localAudioPlayer.play();
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-function pauseLocalAudio() {
-  if (!localAudioPlayer.paused) {
-    localAudioPlayer.pause();
-  }
-}
-
 function stopLocalAudio() {
   if (!localAudioPlayer.paused) {
     localAudioPlayer.pause();
@@ -324,8 +306,6 @@ function setupMediaSession() {
   }
 
   const actions = {
-    play: resumeLocalAudio,
-    pause: pauseLocalAudio,
     stop: stopLocalAudio,
     seekbackward: (details) => seekLocalAudioBy(-(details.seekOffset || 15)),
     seekforward: (details) => seekLocalAudioBy(details.seekOffset || 15),
