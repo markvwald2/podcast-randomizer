@@ -37,9 +37,11 @@ const AUDIO_STORE_NAME = "tracks";
 const LOCAL_AUDIO_TRACKS = {
   anxietyUndo: {
     title: "Anxiety Undo",
+    artist: "Pod Roll",
   },
   morningReset: {
     title: "The Morning Reset",
+    artist: "Pod Roll",
   },
 };
 
@@ -49,6 +51,7 @@ const state = {
   source: "Apple Podcasts search fallback",
   localAudio: new Map(),
   localAudioUrls: new Map(),
+  activeLocalAudioKey: "",
 };
 
 const statusEl = document.querySelector("#status");
@@ -118,9 +121,27 @@ function wireControls() {
   for (const input of fileInputs) {
     input.addEventListener("change", () => importLocalAudio(input));
   }
+
+  localAudioPlayer.addEventListener("play", () => {
+    updateAudioButtons();
+    updateMediaSessionPlaybackState("playing");
+  });
+  localAudioPlayer.addEventListener("pause", () => {
+    updateAudioButtons();
+    updateMediaSessionPlaybackState("paused");
+  });
+  localAudioPlayer.addEventListener("ended", () => stopLocalAudio());
+  localAudioPlayer.addEventListener("loadedmetadata", updateMediaSessionPosition);
+  localAudioPlayer.addEventListener("timeupdate", updateMediaSessionPosition);
+  setupMediaSession();
 }
 
 function handleLocalAudioButton(audioKey) {
+  if (state.activeLocalAudioKey === audioKey && !localAudioPlayer.paused) {
+    stopLocalAudio();
+    return;
+  }
+
   if (state.localAudio.has(audioKey)) {
     playLocalAudio(audioKey);
     return;
@@ -157,11 +178,49 @@ async function playLocalAudio(audioKey) {
   }
 
   try {
+    state.activeLocalAudioKey = audioKey;
+    updateMediaSessionMetadata(audioKey);
     await localAudioPlayer.play();
+    updateAudioButtons();
+    updateMediaSessionPosition();
     showLocalAudioStatus(`Playing ${track.title}.`);
   } catch (error) {
     console.error(error);
     showLocalAudioStatus(`Could not play ${track.title}.`);
+  }
+}
+
+async function resumeLocalAudio() {
+  if (!state.activeLocalAudioKey) {
+    return;
+  }
+
+  try {
+    await localAudioPlayer.play();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function pauseLocalAudio() {
+  if (!localAudioPlayer.paused) {
+    localAudioPlayer.pause();
+  }
+}
+
+function stopLocalAudio() {
+  if (!localAudioPlayer.paused) {
+    localAudioPlayer.pause();
+  }
+
+  localAudioPlayer.currentTime = 0;
+  const track = LOCAL_AUDIO_TRACKS[state.activeLocalAudioKey];
+  state.activeLocalAudioKey = "";
+  updateAudioButtons();
+  updateMediaSessionPlaybackState("none");
+
+  if (track) {
+    showLocalAudioStatus(`Stopped ${track.title}.`);
   }
 }
 
@@ -247,6 +306,100 @@ function updateTrackStatus(audioKey, record) {
   status.textContent = record
     ? `Imported ${formatFileSize(record.size)}`
     : "Not imported";
+}
+
+function updateAudioButtons() {
+  for (const button of audioButtons) {
+    const isActive = button.dataset.audioKey === state.activeLocalAudioKey && !localAudioPlayer.paused;
+    const title = LOCAL_AUDIO_TRACKS[button.dataset.audioKey]?.title || button.textContent;
+
+    button.textContent = isActive ? `Stop ${title}` : title;
+    button.classList.toggle("is-playing", isActive);
+  }
+}
+
+function setupMediaSession() {
+  if (!("mediaSession" in navigator)) {
+    return;
+  }
+
+  const actions = {
+    play: resumeLocalAudio,
+    pause: pauseLocalAudio,
+    stop: stopLocalAudio,
+    seekbackward: (details) => seekLocalAudioBy(-(details.seekOffset || 15)),
+    seekforward: (details) => seekLocalAudioBy(details.seekOffset || 15),
+    seekto: (details) => seekLocalAudioTo(details.seekTime),
+  };
+
+  for (const [action, handler] of Object.entries(actions)) {
+    try {
+      navigator.mediaSession.setActionHandler(action, handler);
+    } catch (error) {
+      console.warn(`Media Session action not supported: ${action}`, error);
+    }
+  }
+}
+
+function updateMediaSessionMetadata(audioKey) {
+  if (!("mediaSession" in navigator) || !("MediaMetadata" in window)) {
+    return;
+  }
+
+  const track = LOCAL_AUDIO_TRACKS[audioKey];
+
+  if (!track) {
+    return;
+  }
+
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: track.title,
+    artist: track.artist,
+    album: "Local audio",
+  });
+}
+
+function updateMediaSessionPlaybackState(playbackState) {
+  if (!("mediaSession" in navigator)) {
+    return;
+  }
+
+  navigator.mediaSession.playbackState = playbackState;
+}
+
+function updateMediaSessionPosition() {
+  if (!("mediaSession" in navigator) || typeof navigator.mediaSession.setPositionState !== "function") {
+    return;
+  }
+
+  const duration = localAudioPlayer.duration;
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return;
+  }
+
+  try {
+    navigator.mediaSession.setPositionState({
+      duration,
+      playbackRate: localAudioPlayer.playbackRate,
+      position: localAudioPlayer.currentTime,
+    });
+  } catch (error) {
+    console.warn("Could not update Media Session position.", error);
+  }
+}
+
+function seekLocalAudioBy(offsetSeconds) {
+  seekLocalAudioTo(localAudioPlayer.currentTime + offsetSeconds);
+}
+
+function seekLocalAudioTo(time) {
+  if (!Number.isFinite(time) || !Number.isFinite(localAudioPlayer.duration)) {
+    return;
+  }
+
+  localAudioPlayer.currentTime = Math.min(Math.max(time, 0), localAudioPlayer.duration);
+  updateMediaSessionPosition();
 }
 
 function isMp3File(file) {
