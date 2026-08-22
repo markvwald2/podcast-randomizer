@@ -33,6 +33,7 @@ const MINIMUM_EPISODE_DURATION_MS = 30 * 60 * 1000;
 const AUDIO_DB_NAME = "pod-roll-audio";
 const AUDIO_DB_VERSION = 1;
 const AUDIO_STORE_NAME = "tracks";
+const LOCAL_AUDIO_ARTWORK = "assets/media/local-audio-artwork-1024.png";
 
 const LOCAL_AUDIO_TRACKS = {
   anxietyUndo: {
@@ -336,6 +337,13 @@ function updateMediaSessionMetadata(audioKey) {
     title: track.title,
     artist: track.artist,
     album: "Local audio",
+    artwork: [
+      {
+        src: new URL(LOCAL_AUDIO_ARTWORK, window.location.href).href,
+        sizes: "1024x1024",
+        type: "image/png",
+      },
+    ],
   });
 }
 
