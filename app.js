@@ -33,7 +33,10 @@ const MINIMUM_EPISODE_DURATION_MS = 30 * 60 * 1000;
 const AUDIO_DB_NAME = "pod-roll-audio";
 const AUDIO_DB_VERSION = 1;
 const AUDIO_STORE_NAME = "tracks";
+const LOCAL_AUDIO_CACHE_NAME = "pod-roll-local-audio-v1";
+const LOCAL_AUDIO_ROUTE_PREFIX = "local-audio";
 const LOCAL_AUDIO_ARTWORK = "assets/media/local-audio-artwork-1024.png";
+const SERVICE_WORKER_VERSION = "19";
 
 const LOCAL_AUDIO_TRACKS = {
   anxietyUndo: {
@@ -52,6 +55,8 @@ const state = {
   source: "Apple Podcasts search fallback",
   localAudio: new Map(),
   localAudioUrls: new Map(),
+  localAudioCachedKeys: new Set(),
+  localAudioRoutesAvailable: false,
   activeLocalAudioKey: "",
 };
 
@@ -81,6 +86,7 @@ init();
 async function init() {
   wireOrientationFallback();
   wireControls();
+  await registerLocalAudioServiceWorker();
   await loadStoredLocalAudio();
 
   try {
@@ -172,9 +178,7 @@ async function playLocalAudio(audioKey, options = {}) {
     return;
   }
 
-  const src = options.refreshSource
-    ? refreshLocalAudioSource(audioKey, storedTrack.blob)
-    : getLocalAudioUrl(audioKey, storedTrack.blob);
+  const src = getLocalAudioUrl(audioKey, storedTrack.blob);
 
   try {
     state.activeLocalAudioKey = audioKey;
@@ -182,7 +186,9 @@ async function playLocalAudio(audioKey, options = {}) {
     if (localAudioPlayer.src !== src) {
       localAudioPlayer.src = src;
     }
-    await seekLocalAudioWhenReady(options.startTime);
+    if (options.startTime) {
+      await seekLocalAudioWhenReady(options.startTime);
+    }
     await localAudioPlayer.play();
     updateAudioButtons();
     updateMediaSessionPosition();
@@ -193,23 +199,6 @@ async function playLocalAudio(audioKey, options = {}) {
   }
 }
 
-function refreshLocalAudioSource(audioKey, blob) {
-  const oldUrl = state.localAudioUrls.get(audioKey);
-
-  if (oldUrl) {
-    URL.revokeObjectURL(oldUrl);
-  }
-
-  const freshUrl = URL.createObjectURL(blob);
-  state.localAudioUrls.set(audioKey, freshUrl);
-  localAudioPlayer.removeAttribute("src");
-  localAudioPlayer.load();
-  localAudioPlayer.src = freshUrl;
-  localAudioPlayer.load();
-
-  return freshUrl;
-}
-
 async function resumeLocalAudioFromMediaSession() {
   const audioKey = state.activeLocalAudioKey;
 
@@ -217,14 +206,9 @@ async function resumeLocalAudioFromMediaSession() {
     return;
   }
 
-  const startTime = Number.isFinite(localAudioPlayer.currentTime)
-    ? localAudioPlayer.currentTime
-    : 0;
-
-  await playLocalAudio(audioKey, {
-    refreshSource: true,
-    startTime,
-  });
+  await localAudioPlayer.play();
+  updateMediaSessionPlaybackState("playing");
+  updateAudioButtons();
 }
 
 function seekLocalAudioWhenReady(time) {
@@ -302,6 +286,7 @@ async function importLocalAudio(input) {
     };
 
     await saveLocalAudioRecord(record);
+    await cacheLocalAudioRecord(record);
     replaceLocalAudioRecord(audioKey, record);
     updateTrackStatus(audioKey, record);
     showLocalAudioStatus(`${track.title} imported.`);
@@ -318,6 +303,7 @@ async function loadStoredLocalAudio() {
 
     for (const record of records) {
       if (LOCAL_AUDIO_TRACKS[record.key]) {
+        await cacheLocalAudioRecord(record);
         replaceLocalAudioRecord(record.key, record);
         updateTrackStatus(record.key, record);
       }
@@ -340,6 +326,10 @@ function replaceLocalAudioRecord(audioKey, record) {
 }
 
 function getLocalAudioUrl(audioKey, blob) {
+  if (state.localAudioRoutesAvailable && state.localAudioCachedKeys.has(audioKey)) {
+    return new URL(getLocalAudioRoute(audioKey), window.location.href).href;
+  }
+
   if (!state.localAudioUrls.has(audioKey)) {
     state.localAudioUrls.set(audioKey, URL.createObjectURL(blob));
   }
@@ -376,6 +366,7 @@ function setupMediaSession() {
 
   const actions = {
     play: resumeLocalAudioFromMediaSession,
+    pause: () => localAudioPlayer.pause(),
     stop: stopLocalAudio,
     seekbackward: (details) => seekLocalAudioBy(-(details.seekOffset || 15)),
     seekforward: (details) => seekLocalAudioBy(details.seekOffset || 15),
@@ -389,6 +380,50 @@ function setupMediaSession() {
       console.warn(`Media Session action not supported: ${action}`, error);
     }
   }
+}
+
+async function registerLocalAudioServiceWorker() {
+  if (!("serviceWorker" in navigator) || !("caches" in window)) {
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.register(`service-worker.js?v=${SERVICE_WORKER_VERSION}`);
+    await navigator.serviceWorker.ready;
+
+    if (registration.active) {
+      state.localAudioRoutesAvailable = true;
+    }
+  } catch (error) {
+    console.warn("Local audio service worker could not be registered.", error);
+  }
+}
+
+async function cacheLocalAudioRecord(record) {
+  if (!("caches" in window) || !record?.blob) {
+    return false;
+  }
+
+  try {
+    const cache = await caches.open(LOCAL_AUDIO_CACHE_NAME);
+    const url = new URL(getLocalAudioRoute(record.key), window.location.href);
+    await cache.put(url.href, new Response(record.blob, {
+      headers: {
+        "Content-Type": record.type || "audio/mpeg",
+        "Cache-Control": "private, max-age=31536000",
+      },
+    }));
+    state.localAudioCachedKeys.add(record.key);
+    return true;
+  } catch (error) {
+    console.warn(`Could not cache local audio for ${record.key}.`, error);
+    state.localAudioCachedKeys.delete(record.key);
+    return false;
+  }
+}
+
+function getLocalAudioRoute(audioKey) {
+  return `${LOCAL_AUDIO_ROUTE_PREFIX}/${encodeURIComponent(audioKey)}.mp3`;
 }
 
 function updateMediaSessionMetadata(audioKey) {
