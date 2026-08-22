@@ -163,7 +163,7 @@ function promptLocalAudioImport(audioKey) {
   input.click();
 }
 
-async function playLocalAudio(audioKey) {
+async function playLocalAudio(audioKey, options = {}) {
   const track = LOCAL_AUDIO_TRACKS[audioKey];
   const storedTrack = state.localAudio.get(audioKey);
 
@@ -172,15 +172,17 @@ async function playLocalAudio(audioKey) {
     return;
   }
 
-  const src = getLocalAudioUrl(audioKey, storedTrack.blob);
-
-  if (localAudioPlayer.src !== src) {
-    localAudioPlayer.src = src;
-  }
+  const src = options.refreshSource
+    ? refreshLocalAudioSource(audioKey, storedTrack.blob)
+    : getLocalAudioUrl(audioKey, storedTrack.blob);
 
   try {
     state.activeLocalAudioKey = audioKey;
     updateMediaSessionMetadata(audioKey);
+    if (localAudioPlayer.src !== src) {
+      localAudioPlayer.src = src;
+    }
+    await seekLocalAudioWhenReady(options.startTime);
     await localAudioPlayer.play();
     updateAudioButtons();
     updateMediaSessionPosition();
@@ -189,6 +191,72 @@ async function playLocalAudio(audioKey) {
     console.error(error);
     showLocalAudioStatus(`Could not play ${track.title}.`);
   }
+}
+
+function refreshLocalAudioSource(audioKey, blob) {
+  const oldUrl = state.localAudioUrls.get(audioKey);
+
+  if (oldUrl) {
+    URL.revokeObjectURL(oldUrl);
+  }
+
+  const freshUrl = URL.createObjectURL(blob);
+  state.localAudioUrls.set(audioKey, freshUrl);
+  localAudioPlayer.removeAttribute("src");
+  localAudioPlayer.load();
+  localAudioPlayer.src = freshUrl;
+  localAudioPlayer.load();
+
+  return freshUrl;
+}
+
+async function resumeLocalAudioFromMediaSession() {
+  const audioKey = state.activeLocalAudioKey;
+
+  if (!audioKey) {
+    return;
+  }
+
+  const startTime = Number.isFinite(localAudioPlayer.currentTime)
+    ? localAudioPlayer.currentTime
+    : 0;
+
+  await playLocalAudio(audioKey, {
+    refreshSource: true,
+    startTime,
+  });
+}
+
+function seekLocalAudioWhenReady(time) {
+  if (!Number.isFinite(time) || time <= 0) {
+    return Promise.resolve();
+  }
+
+  if (localAudioPlayer.readyState >= 1) {
+    setLocalAudioCurrentTime(time);
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => {
+      if (localAudioPlayer.readyState >= 1) {
+        setLocalAudioCurrentTime(time);
+      }
+      resolve();
+    }, 1500);
+
+    localAudioPlayer.addEventListener("loadedmetadata", () => {
+      window.clearTimeout(timeout);
+      setLocalAudioCurrentTime(time);
+      resolve();
+    }, { once: true });
+  });
+}
+
+function setLocalAudioCurrentTime(time) {
+  const duration = localAudioPlayer.duration;
+  const maxTime = Number.isFinite(duration) ? duration : time;
+  localAudioPlayer.currentTime = Math.min(Math.max(time, 0), maxTime);
 }
 
 function stopLocalAudio() {
@@ -307,6 +375,7 @@ function setupMediaSession() {
   }
 
   const actions = {
+    play: resumeLocalAudioFromMediaSession,
     stop: stopLocalAudio,
     seekbackward: (details) => seekLocalAudioBy(-(details.seekOffset || 15)),
     seekforward: (details) => seekLocalAudioBy(details.seekOffset || 15),
